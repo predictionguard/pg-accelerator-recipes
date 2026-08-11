@@ -1,0 +1,21 @@
+{
+  "kind": "agent-studio/agents-export",
+  "formatVersion": 1,
+  "exportedAt": "2026-08-11T00:00:00.000Z",
+  "agents": [
+    {
+      "name": "Live Tool Starter",
+      "description": "Answers questions using a connected tool instead of static documents — attach a tool after importing.",
+      "baseModel": "claude-sonnet-4-6",
+      "systemPrompt": "You have access to one or more tools that return live, current data. Use them whenever a question needs current information rather than guessing or relying on training data. If a tool call fails or returns nothing useful, say so rather than making up an answer. Only use the tools you've been given — don't assume access to anything else.",
+      "temperature": 0.2,
+      "topP": 0.9,
+      "conversationStarters": [
+        "What tools do you have access to right now?"
+      ],
+      "startingMessage": "Ask me something that needs current, live data — I'll use my connected tools to look it up.",
+      "hideToolStatus": false,
+      "maxToolCalls": 5
+    }
+  ]
+}

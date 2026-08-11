@@ -1,0 +1,7 @@
+{
+  "display_name": "inventory-tools",
+  "server_url": "https://your-mcp-server.yourcompany.com/mcp/",
+  "authentication": "bearer",
+  "token": "your-token-here",
+  "allow_anonymous_visitors": false
+}

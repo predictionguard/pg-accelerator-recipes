@@ -1,0 +1,67 @@
+# Building on Prediction Guard
+
+This project builds agents and applications that run on Prediction Guard, our AI control plane. Every model call and MCP tool call from anything you build here should go through Prediction Guard's gateway, not a public LLM provider directly — that's how governance, PII/prompt-injection checks, and observability stay applied.
+
+Copy this file to `CLAUDE.md` in your project root and fill in the real base URL and key below.
+
+## Connecting to Prediction Guard
+
+```
+PG_BASE_URL=https://your-org.example.com
+PG_API_KEY=<your key>
+```
+
+The gateway is both OpenAI-compatible and Anthropic-compatible:
+
+- `POST {PG_BASE_URL}/v1/chat/completions` — OpenAI chat completions shape
+- `POST {PG_BASE_URL}/v1/messages` — Anthropic Messages shape (needs `anthropic-version` header, `max_tokens` required)
+- `POST {PG_BASE_URL}/v1/embeddings` — OpenAI embeddings shape
+
+Auth is a bearer token either way: `Authorization: Bearer $PG_API_KEY`.
+
+## Discovering what's available — don't hardcode model names
+
+Model availability differs per deployment and can change. Before writing code that names a specific model, check what's actually registered:
+
+```bash
+curl -s "$PG_BASE_URL/v1/models" -H "Authorization: Bearer $PG_API_KEY"
+```
+
+Each entry has a `capabilities` object — check it before picking a model for a task:
+- `chat_completion` — supports the OpenAI `/v1/chat/completions` shape
+- `messages` — supports the Anthropic `/v1/messages` shape (these are often different models than the ones with `chat_completion` — don't assume both work for the same model ID)
+- `tool_calling` — supports function/tool calling. Not every model that answers plain questions correctly handles a tool-calling agent framework's format correctly — if you're building a tool-using agent (e.g. with Pydantic AI), test tool-calling specifically, don't assume the capability flag guarantees framework compatibility.
+- `embedding` — supports `/v1/embeddings`
+
+If you're picking a model for a new script and don't know which one to use, ask instead of guessing — or fall back to whatever model an existing working recipe in this repo already uses.
+
+## Discovering MCP servers / tools
+
+If the task involves connecting to a tool server (inventory, a database, an external API) rather than building one from scratch, check what's already registered before assuming you need to build a new one:
+
+- Ask whoever manages your Prediction Guard admin console whether the tool you need is already registered — MCP/tool registration is org-wide, not something each project sets up independently.
+- If you do need a new one, see [`code-forward/mcp-tool-agent`](code-forward/mcp-tool-agent/) for a minimal example MCP server you can adapt.
+
+## Building agents
+
+Prefer [Pydantic AI](https://ai.pydantic.dev/) as the agent framework for anything beyond a single request/response call — it gives you real tool-calling, structured output, and a run loop without hand-rolling one. Point it at Prediction Guard like this:
+
+```python
+from pydantic_ai import Agent
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.openai import OpenAIProvider
+
+model = OpenAIChatModel(
+    "your-model-id",
+    provider=OpenAIProvider(base_url=f"{PG_BASE_URL}/v1", api_key=PG_API_KEY),
+)
+agent = Agent(model, system_prompt="...")
+```
+
+See [`code-forward/`](code-forward/) for worked examples: retrieval over documents, text-to-SQL, and a live-API-connected tool agent.
+
+## What NOT to do
+
+- Don't confuse "Claude Code building on Prediction Guard" with "Claude Code running on Prediction Guard" — they're different things. What matters is that the agents and apps *you're building* call `PG_BASE_URL`. Whether Claude Code itself (the coding assistant you're talking to right now) is also pointed at Prediction Guard is a separate, optional choice — it's fine either way, and not the point of this file.
+- Don't hardcode a model name without confirming it's registered and has the capability you need (see above) — a model that works fine on staging may not exist on this deployment.
+- Don't build a new MCP server for a tool that's already registered — check first.

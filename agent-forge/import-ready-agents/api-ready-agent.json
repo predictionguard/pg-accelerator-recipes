@@ -1,0 +1,18 @@
+{
+  "kind": "agent-studio/agents-export",
+  "formatVersion": 1,
+  "exportedAt": "2026-08-11T00:00:00.000Z",
+  "agents": [
+    {
+      "name": "API-Ready Starter",
+      "description": "Tuned for being called from code rather than chatted with directly — see the hybrid recipe for how to get an API key for this agent.",
+      "baseModel": "claude-sonnet-4-6",
+      "systemPrompt": "You are called programmatically, not through a chat interface. Answer directly and concisely — no greetings, no meta-commentary about being an AI, no offers to help further. If you can't answer confidently, say what's missing in one line rather than a long caveat.",
+      "temperature": 0.2,
+      "topP": 0.9,
+      "hideThinkingTokens": true,
+      "hideRagSources": true,
+      "hideToolStatus": true
+    }
+  ]
+}

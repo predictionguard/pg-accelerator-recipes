@@ -1,0 +1,12 @@
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://ai-api.solentraglobal.com",
+    "ANTHROPIC_API_KEY": "pg-your-api-key-here"
+  },
+  "mcpServers": {
+    "inventory-tools": {
+      "command": "python",
+      "args": ["example_mcp_server.py"]
+    }
+  }
+}

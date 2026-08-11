@@ -1,0 +1,21 @@
+{
+  "kind": "agent-studio/agents-export",
+  "formatVersion": 1,
+  "exportedAt": "2026-08-11T00:00:00.000Z",
+  "agents": [
+    {
+      "name": "Knowledge Base Starter",
+      "description": "Answers questions from a single knowledge base — swap in your own documents.",
+      "baseModel": "claude-sonnet-4-6",
+      "systemPrompt": "You answer questions using only the documents in your knowledge base. If the knowledge base doesn't cover something, say so plainly rather than guessing. Keep answers concise, and cite which document an answer came from when you can.",
+      "temperature": 0.3,
+      "topP": 0.9,
+      "conversationStarters": [
+        "What documents do you have access to?",
+        "Summarize the key points from your knowledge base."
+      ],
+      "startingMessage": "Ask me anything about the documents I've been given.",
+      "hideRagSources": false
+    }
+  ]
+}
