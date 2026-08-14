@@ -1,0 +1,15 @@
+.git*
+.venv/
+.claude/
+.vscode/
+__pycache__/
+**/__pycache__/
+.python-version
+local.settings.json
+.env
+appPackage/
+scripts/
+tests/
+uv.lock
+pyproject.toml
+README.md

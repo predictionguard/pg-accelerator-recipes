@@ -1,0 +1,47 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.17",
+  "version": "0.1.0",
+  "id": "${{TEAMS_APP_ID}}",
+  "packageName": "com.predictionguard.agentforge.teams",
+  "developer": {
+    "name": "${{DEVELOPER_NAME}}",
+    "websiteUrl": "${{DEVELOPER_URL}}",
+    "privacyUrl": "${{DEVELOPER_URL}}",
+    "termsOfUseUrl": "${{DEVELOPER_URL}}"
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "name": {
+    "short": "${{APP_NAME_SHORT}}",
+    "full": "${{APP_NAME_FULL}}"
+  },
+  "description": {
+    "short": "${{APP_DESCRIPTION_SHORT}}",
+    "full": "${{APP_DESCRIPTION_FULL}}"
+  },
+  "accentColor": "#181E42",
+  "bots": [
+    {
+      "botId": "${{BOT_ID}}",
+      "scopes": ["personal", "team", "groupChat"],
+      "supportsFiles": false,
+      "isNotificationOnly": false,
+      "commandLists": [
+        {
+          "scopes": ["personal", "team", "groupChat"],
+          "commands": [
+            {
+              "title": "/reset",
+              "description": "Clear the conversation history for this chat"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "permissions": ["identity", "messageTeamMembers"],
+  "validDomains": []
+}
