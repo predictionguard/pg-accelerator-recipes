@@ -9,3 +9,4 @@ bin/
 obj/
 .azure/
 .pytest_cache/
+.DS_Store

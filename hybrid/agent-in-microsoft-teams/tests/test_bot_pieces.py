@@ -4,8 +4,15 @@ from __future__ import annotations
 
 import pytest
 from botbuilder.core import TurnContext
-from botbuilder.schema import Activity, ActivityTypes, ChannelAccount, Entity
+from botbuilder.schema import (
+    Activity,
+    ActivityTypes,
+    ChannelAccount,
+    ConversationAccount,
+    Entity,
+)
 
+from agentforge_teams.bot import ForgeTeamsBot
 from agentforge_teams.conversation import InMemoryHistoryStore
 from agentforge_teams.forge_client import ForgeAgent, ForgeError
 
@@ -158,6 +165,41 @@ def test_remove_recipient_mention_strips_teams_markup():
     assert TurnContext.remove_recipient_mention(activity).strip() == (
         "what is our churn rate?"
     )
+
+
+def _group_message(entities: list | None) -> Activity:
+    return Activity(
+        type=ActivityTypes.message,
+        text="hi",
+        recipient=ChannelAccount(id="28:bot-id", name="Agent Forge"),
+        conversation=ConversationAccount(id="19:channel-thread", is_group=True),
+        entities=entities,
+    )
+
+
+def _mention(bot_id: str) -> Entity:
+    return Entity().deserialize(
+        {
+            "type": "mention",
+            "text": "<at>Agent Forge</at>",
+            "mentioned": {"id": bot_id, "name": "Agent Forge"},
+        }
+    )
+
+
+def test_addressed_to_bot_requires_a_mention_of_this_bot():
+    """A channel message only belongs to the bot if it names *this* bot.
+
+    `get_mentions` hands back raw `Entity` objects, so the mentioned id sits in
+    `additional_properties` — a bot with no entities, or one mentioning someone
+    else, is somebody else's conversation.
+    """
+    addressed = ForgeTeamsBot._addressed_to_bot
+
+    assert addressed(_group_message([_mention("28:bot-id")])) is True
+    assert addressed(_group_message([_mention("29:a-colleague")])) is False
+    assert addressed(_group_message(None)) is False
+    assert addressed(_group_message([])) is False
 
 
 # ----------------------------------------------------------------- history window

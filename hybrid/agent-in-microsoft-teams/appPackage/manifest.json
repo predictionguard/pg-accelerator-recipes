@@ -3,7 +3,6 @@
   "manifestVersion": "1.17",
   "version": "0.1.0",
   "id": "${{TEAMS_APP_ID}}",
-  "packageName": "com.predictionguard.agentforge.teams",
   "developer": {
     "name": "${{DEVELOPER_NAME}}",
     "websiteUrl": "${{DEVELOPER_URL}}",

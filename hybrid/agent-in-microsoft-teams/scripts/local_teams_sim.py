@@ -13,10 +13,14 @@ Run the bot first, in another terminal:
 then:
 
     uv run python scripts/local_teams_sim.py
-    uv run python scripts/local_teams_sim.py --channel   # simulate an @mention
+    uv run python scripts/local_teams_sim.py --channel   # simulate a channel
 
-`--channel` wraps your text in `<at>Agent Forge</at> ...` the way Teams does in a
-channel, which exercises the mention-stripping path.
+`--channel` puts the conversation in a channel (`isGroup`), where whether the bot
+is addressed is decided per *message*, not per run: prefix your text with
+`@Agent Forge` and the activity carries the mention the way Teams sends it, which
+exercises the mention-stripping path. Type anything else and it goes out as a
+plain channel message with no mention — the shape Teams withholds from the bot
+unless the app is granted `ChannelMessage.Read.Group`.
 """
 
 from __future__ import annotations
@@ -62,8 +66,30 @@ async def handle_reply(request: web.Request) -> web.Response:
     return web.json_response({"id": str(uuid.uuid4())})
 
 
+def split_mention(text: str) -> tuple[bool, str]:
+    """Decide whether the typed text addresses the bot, and return the remainder.
+
+    In Teams the `@` a human types never reaches the bot as text — the client
+    turns it into a `mention` entity and rewrites the body. So the sim has to
+    make that call here, at the point where a person would have clicked the
+    autocomplete, rather than assuming every message in a channel is addressed
+    to the bot.
+    """
+    if not text.startswith("@"):
+        return False, text
+    body = text[1:]
+    if body.casefold().startswith(BOT_NAME.casefold()):
+        return True, body[len(BOT_NAME) :].lstrip()
+    # `@anyone-else` — Teams would address that mention elsewhere, but the sim
+    # has only one bot to talk to, so treat it as addressing us.
+    _, _, rest = body.partition(" ")
+    return True, rest.lstrip()
+
+
 def build_activity(text: str, *, channel: bool) -> dict:
     """Construct what Teams would send for a message."""
+    mentioned, body = split_mention(text) if channel else (False, text)
+
     activity: dict = {
         "type": "message",
         "id": str(uuid.uuid4()),
@@ -72,14 +98,17 @@ def build_activity(text: str, *, channel: bool) -> dict:
         "conversation": {"id": CONVERSATION_ID, "isGroup": channel},
         "from": {"id": USER_ID, "name": "Local Tester"},
         "recipient": {"id": BOT_ID, "name": BOT_NAME},
-        "text": text,
+        "text": body,
         "textFormat": "plain",
         "locale": "en-US",
     }
-    if channel:
-        # Exactly the shape Teams uses for an @mention in a channel.
+    if mentioned:
+        # Exactly the shape Teams uses for an @mention in a channel. The entity
+        # is what does the work — `remove_recipient_mention` matches entities
+        # against `recipient.id` and ignores the text — so the two have to be
+        # set together or the prompt reaches the agent with the markup intact.
         mention = f"<at>{BOT_NAME}</at>"
-        activity["text"] = f"{mention} {text}"
+        activity["text"] = f"{mention} {body}".strip()
         activity["entities"] = [
             {
                 "type": "mention",
@@ -159,7 +188,7 @@ async def main() -> int:
     port = runner.addresses[0][1]
     SERVICE_URL = f"http://127.0.0.1:{port}"
 
-    mode = "channel (@mention)" if channel else "personal chat"
+    mode = "channel" if channel else "personal chat"
     print(f"{BOLD}Local Teams simulator{RESET} — {mode}")
     print(f"{DIM}fake connector on {SERVICE_URL} → bot at {BOT_URL}{RESET}")
 
@@ -168,7 +197,13 @@ async def main() -> int:
             await runner.cleanup()
             return 1
 
-        print(f"\n{DIM}type a message, or 'quit'. Try /reset to clear history.{RESET}\n")
+        print(f"\n{DIM}type a message, or 'quit'. Try /reset to clear history.{RESET}")
+        if channel:
+            print(
+                f"{DIM}prefix with '@{BOT_NAME}' to send it as a mention; "
+                f"anything else goes out unaddressed.{RESET}"
+            )
+        print()
 
         # Send the install event first, so you see the welcome message.
         await send(
@@ -197,7 +232,12 @@ async def main() -> int:
                 continue
             if text in {"quit", "exit"}:
                 break
-            await send(session, build_activity(text, channel=channel))
+            activity = build_activity(text, channel=channel)
+            if channel and "entities" not in activity:
+                # The bot drops unaddressed group messages without replying, and
+                # silence here looks exactly like a crashed bot. Say which it is.
+                print(f"{DIM}  … sent unaddressed — the bot should stay silent{RESET}")
+            await send(session, activity)
 
     await runner.cleanup()
     return 0
