@@ -10,7 +10,7 @@ Starting a new Claude Code project to build on Prediction Guard? Copy [`CLAUDE.m
 |---|---|
 | Write actual application code that calls Prediction Guard | [`code-forward/`](code-forward/) |
 | Build an agent without writing code | [`agent-forge/`](agent-forge/) |
-| Call an Agent Forge agent from a Claude Code script or tool | [`hybrid/`](hybrid/) |
+| Call an Agent Forge agent from your own code, a script, or a tool | [`hybrid/`](hybrid/) |
 
 ## Recipes
 
@@ -27,6 +27,7 @@ Starting a new Claude Code project to build on Prediction Guard? Copy [`CLAUDE.m
 **Hybrid**
 - [`call-agent-from-claude-code`](hybrid/call-agent-from-claude-code/) — treat an Agent Forge agent as one callable step in a larger script
 - [`agent-as-approval-gated-tool`](hybrid/agent-as-approval-gated-tool/) — why "Ask" tool approval doesn't carry over to API calls, and what to do instead
+- [`agent-in-microsoft-teams`](hybrid/agent-in-microsoft-teams/) — expose an Agent Forge agent as a Microsoft Teams bot, deployed on Azure Functions
 
 ## Conventions across every recipe
 

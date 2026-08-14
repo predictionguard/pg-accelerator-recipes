@@ -1,0 +1,33 @@
+[project]
+name = "agentforge-teams"
+version = "0.1.0"
+description = "Expose a Prediction Guard Agent Forge agent to Microsoft Teams, hosted on Azure Functions."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # `botbuilder-core` imports aiohttp transitively via msrest's async pipeline
+    # but does not declare it, so it is pinned here explicitly.
+    "aiohttp>=3.14.3",
+    "azure-functions>=1.25.0",
+    "botbuilder-core>=4.17.1",
+    "botbuilder-schema>=4.17.1",
+    "fastapi>=0.141.1",
+    "openai>=3.0.0",
+    "python-dotenv>=1.2.2",
+]
+
+[dependency-groups]
+# `uvicorn` is local-dev only: on Azure Functions the Python worker invokes the
+# ASGI app directly, so shipping it would only bloat every Oryx build with
+# uvloop / httptools / watchfiles / websockets.
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "uvicorn[standard]>=0.52.2",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+# Mirrors the Azure Functions host, which puts the app root on sys.path rather
+# than installing the code as a distribution.
+pythonpath = ["."]
