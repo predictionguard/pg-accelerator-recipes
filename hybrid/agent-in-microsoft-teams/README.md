@@ -14,7 +14,8 @@ curl -X POST "$AGENT_FORGE_BASE_URL/v1/chat/completions" \
 
 where `AGENT_FORGE_BASE_URL` is your deployment's host — `https://forge-api.predictionguard.com`
 for the public gateway, and something else for dedicated or self-hosted
-deployments.
+deployments. (In PowerShell, call it as `curl.exe` — a bare `curl` is an alias for
+`Invoke-WebRequest`, which takes different arguments entirely.)
 
 That single endpoint is enough to reach any platform your organisation already
 uses. This repo does it for Teams: build and refine your agent in Agent Studio,
@@ -69,9 +70,33 @@ Three moving parts, and you create all three below:
 | An Agent Forge agent | Its **agent id**, a scoped **Agent Studio API key**, and your deployment's **host** |
 | An Azure subscription | Permission to create resources (Contributor on a resource group) |
 | Microsoft Teams | Your tenant must allow custom app upload — see [Permissions](#permissions-and-who-has-to-approve-what) |
-| [uv](https://docs.astral.sh/uv/) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
-| Azure CLI | `brew install azure-cli`, then `az login` |
-| Functions Core Tools | `brew tap azure/functions && brew install azure-functions-core-tools@4` |
+
+Plus three command-line tools:
+
+| Tool | macOS | Windows |
+| --- | --- | --- |
+| [uv](https://docs.astral.sh/uv/) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` | `winget install --id=astral-sh.uv -e` |
+| [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) | `brew install azure-cli` | `winget install --exact --id Microsoft.AzureCLI` |
+| [Functions Core Tools](https://learn.microsoft.com/azure/azure-functions/functions-run-local) | `brew tap azure/functions && brew install azure-functions-core-tools@4` | [64-bit MSI](https://go.microsoft.com/fwlink/?linkid=2174087), or `npm i -g azure-functions-core-tools@4 --unsafe-perm true` |
+
+Then `az login`, on either platform. Two install snags worth knowing in advance:
+
+- **macOS** — Homebrew 6 refuses to load formulae from third-party taps until you
+  say so, and the Core Tools tap is one. If the install stops with a trust error,
+  run `brew trust azure/functions` and try again.
+- **Windows** — close and reopen your terminal after installing the Azure CLI, or
+  `az` won't be on `PATH` yet. You can also skip Core Tools here: nothing in steps
+  1–3 uses it, and the deploy script that does runs inside WSL, which needs its
+  own copy anyway (§4). Install it natively only if you plan to run `func` from
+  PowerShell yourself.
+
+> ### Which shell to use on Windows
+>
+> Steps 1–3 run fine in **PowerShell** — `uv` handles Python identically on both
+> platforms, and the few commands that differ are noted inline as you reach them.
+>
+> Step 4 is where it changes: [deploy_azure.sh](scripts/deploy_azure.sh) is a bash
+> script, so it needs **WSL 2**. See [Deploying from Windows](#deploying-from-windows).
 
 ## 1. Clone and configure
 
@@ -82,6 +107,8 @@ uv sync --all-groups
 
 cp .env.example .env
 ```
+
+In PowerShell the last line is `Copy-Item .env.example .env`; the rest is identical.
 
 Fill in the two required values in `.env`:
 
@@ -140,14 +167,46 @@ turn runs exactly as it will in production. Worth testing:
    sentence"). This is the check that matters; without history the bot feels
    broken in Teams.
 3. `/reset`, then ask the follow-up again — it should have lost the thread.
-4. Quit and re-run with `--channel` to simulate an `@mention` in a channel.
+4. Quit and re-run with `--channel` to simulate a channel. Prefix a message with
+   `@Agent Forge` to send it as a mention — that exercises the mention-stripping
+   path. Anything you type without that prefix goes out unaddressed, which is the
+   shape Teams withholds from the bot unless you grant it channel-wide read.
 
 ## 4. Deploy to Azure Functions
 
+Set `APP_NAME` in `.env` — **not** with `export`:
+
+```ini
+APP_NAME=my-agent-teams     # names every Azure resource; must be globally unique
+```
+
 ```bash
-export APP_NAME=my-agent-teams        # names every Azure resource; must be globally unique
 ./scripts/deploy_azure.sh
 ```
+
+> **Why `.env` and not `export`.** `APP_NAME` names every resource, and the script
+> only ever updates resources whose names match it. An exported value dies with
+> the terminal, so the next run falls back to the built-in default and provisions
+> a **second, separate deployment** — leaving your real one untouched. Nothing
+> errors; you just end up with two. The script now prints the name it resolved,
+> says where it came from, and asks before using the default.
+
+<a id="deploying-from-windows"></a>
+**Deploying from Windows.** The script is bash, so run it under
+[WSL 2](https://learn.microsoft.com/windows/wsl/install) — `wsl --install` once
+from an admin PowerShell, then reopen your terminal. Three things that catch
+people out:
+
+- **Clone the repo *inside* the distro**, not under `/mnt/c/...`. Cloning on the
+  Windows side can rewrite the script's line endings to CRLF, and bash then fails
+  with `$'\r': command not found` — a confusing error for a file you never edited.
+- **WSL has its own `PATH`.** `uv`, `az`, and `func` must be installed *within*
+  the distro; your Windows copies are invisible to it. Follow the Linux
+  instructions for [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli-linux)
+  and [Core Tools](https://learn.microsoft.com/azure/azure-functions/functions-run-local?tabs=linux),
+  and run `az login` there too.
+- Everything after that is the bash block above, unchanged. (Git Bash may also
+  work, but it isn't tested.)
 
 The script reads your `.env` and is safe to re-run — use it to redeploy after
 changing anything. It will:
@@ -164,7 +223,7 @@ changing anything. It will:
 Confirm it's healthy:
 
 ```bash
-curl https://<your-app>.azurewebsites.net/api/healthz
+curl https://<your-app>.azurewebsites.net/api/healthz     # curl.exe in PowerShell
 ```
 
 `"status": "ok"` means the agent id and key arrived intact.
@@ -212,6 +271,9 @@ cp .env support-agent.env       # edit: same, different values
 cp research-agent.env .env
 APP_NAME=research-agent-teams ./scripts/deploy_azure.sh
 ```
+
+On Windows this is the same bash, run inside WSL — the `VAR=value command` prefix
+is a bash idiom with no PowerShell equivalent, so don't try to translate it.
 
 > **`TEAMS_APP_ID` matters more than it looks.** Leave it blank the first time and
 > the build script generates one and prints it — **paste that back into that
@@ -293,7 +355,7 @@ worth checking before you start.
 | --- | --- | --- |
 | Create Azure resources | **Contributor** on a subscription or resource group | Ask for a resource group you own |
 | Register the bot's Entra app | Tenant setting *Users can register applications* = **Yes**, or the **Application Developer** role | An admin creates the app registration; then pass its id — see below |
-| Enable the Azure Bot resource | `Microsoft.BotService` provider registered on the subscription | `az provider register --namespace Microsoft.BotService` |
+| Create the Azure resources | The `Microsoft.Storage`, `Microsoft.Web`, and `Microsoft.BotService` providers registered on the subscription | The deploy script checks these first and prints the exact `az provider register` commands. Free, creates nothing, and needs `*/register/action` — which Contributor includes |
 | **Upload a custom app** in Teams | Teams app setup policy allowing **Upload custom apps** | A **Teams Administrator** must enable it, or publish on your behalf |
 | Publish org-wide | **Teams Administrator** | Hand them the zip from `appPackage/` |
 
@@ -337,8 +399,10 @@ or that `@mention` it.
 
 **`Invalid API key` although `.env` looks right.** An exported shell variable
 beats `.env` — the app logs a warning naming any variable it ignored for this
-reason. Fix with `unset AGENT_API_KEY`. This usually happens after running
-a command with an inline `AGENT_API_KEY=... uv run ...`.
+reason. Fix with `unset AGENT_API_KEY`, or `Remove-Item Env:AGENT_API_KEY` in
+PowerShell. This usually happens after running a command with an inline
+`AGENT_API_KEY=... uv run ...` (bash only — PowerShell has no such prefix, so
+there you'd have set `$env:AGENT_API_KEY` and it persists for the whole session).
 
 **Editing `.env` changes nothing.** Config is read once at startup, and
 `--reload` only watches `.py` files. Restart the bot.
@@ -348,6 +412,10 @@ holding the port with different settings. Find and stop it:
 
 ```bash
 lsof -nP -iTCP:3978 -sTCP:LISTEN
+```
+
+```powershell
+Get-NetTCPConnection -LocalPort 3978 | Select-Object OwningProcess   # then: Stop-Process -Id <pid>
 ```
 
 **The bot never replies in Teams.** Check `/api/healthz` first. If it reports
@@ -367,12 +435,71 @@ It must be the host on its own (`https://host`) — not `https://host/v1` and no
 the full `/chat/completions` path, since the code appends the rest. A pasted
 `/v1` is trimmed with a warning rather than producing `/v1/v1`.
 
-**The agent replies but ignores context.** Conversation history lives in process
-memory, so it resets when the app restarts and is not shared between instances.
-The deploy script pins the app to one instance for this reason. To raise that,
-implement the `HistoryStore` protocol in
-[conversation.py](agentforge_teams/conversation.py) against Azure Table Storage
-or Redis first.
+<a id="ephemeral-instances"></a>
+**The bot forgets everything, or drops messages entirely.** Both symptoms have
+one cause, and it is the most likely thing to bite you in production.
+
+Flex Consumption scales to **zero**. With no always-ready instance configured, a
+quiet bot gets a *brand new Python process for every message* — which you can see
+in the logs as a fresh `InstanceId` per turn:
+
+```
+15:39:18  instance 2769f47b   "Holsa"          → replied in 7.0s
+15:40:32  instance f6d41096   "Kuala Lumpur"   → host started, no reply
+15:47:42  instance 364dee66   "Hello?"         → replied in 8.7s
+```
+
+Two things follow, and the second is easy to miss:
+
+- **Messages get dropped.** A cold start plus a slow agent call can exceed the
+  Bot Framework's delivery window, and Teams gives up. The message simply
+  vanishes — no error in the chat, and often no request in your logs at all.
+- **Conversation history cannot work.** History lives in process memory, so a new
+  process per turn means it is *always* empty. Follow-up questions are not
+  degraded here, they are impossible — which makes the bot feel broken in exactly
+  the way a demo won't reveal.
+
+**How to confirm it's this.** Look for a new instance id per message:
+
+```bash
+az monitor app-insights query --app <app>-func --resource-group <app>-rg \
+  --analytics-query "traces | where message has 'Starting Host' | project timestamp, message | order by timestamp desc | take 10" \
+  --offset 1h -o table
+```
+
+Then compare against `requests` for the same window. A message you sent with no
+corresponding request is one Teams gave up on.
+
+**What to do about it** — pick based on how you're using this, since both cost
+money and neither is enabled by default:
+
+| Approach | Fixes | Trade-off |
+| --- | --- | --- |
+| Keep one instance always ready | Both — no cold start, and history survives between turns | Billed continuously, whether or not anyone is talking to the bot |
+| Move history out of process — implement `HistoryStore` in [conversation.py](agentforge_teams/conversation.py) against Table Storage or Redis | History only | Storage cost plus the code; messages can still be lost to a cold start |
+
+```bash
+# one always-ready instance
+az functionapp scale config always-ready set \
+  --name <app>-func --resource-group <app>-rg --settings http=1
+```
+
+The deploy script does **not** manage the always-ready setting — it's deliberately
+left as your decision, since it bills whether or not anyone is using the bot. That
+also means nothing re-applies it, so confirm it survived after any redeploy:
+
+```bash
+az functionapp scale config show --name <app>-func --resource-group <app>-rg
+```
+
+They compose: always-ready fixes latency, durable history fixes memory. Note the
+single-instance pin the deploy script applies exists *only* because history is
+in-process — move history to storage and you can raise
+`--maximum-instance-count` too.
+
+If the bot is only for occasional internal use, losing the odd message and having
+no follow-up memory may genuinely be acceptable. Decide deliberately rather than
+discovering it from a colleague.
 
 ---
 
@@ -406,14 +533,20 @@ uv run pytest -q      # tests
 
 # Known limits
 
-- **History is per-instance and in memory** — it doesn't survive a restart. Fine
-  for a demo; see [conversation.py](agentforge_teams/conversation.py) for the
-  seam to make it durable.
+- **History is per-instance and in memory** — it doesn't survive a restart, and
+  on Flex Consumption's default scale-to-zero the app gets a new process per
+  message, so in practice it doesn't survive *at all* until you configure an
+  always-ready instance or move history to storage. This is the one limit worth
+  reading before you hand the bot to colleagues — see
+  [The bot forgets everything, or drops messages](#ephemeral-instances).
 - **Group chats share one history.** Everyone in the chat contributes to the same
   context. For per-person isolation, key history on the sender id as well.
 - **Replies are plain markdown**, not Adaptive Cards. Bold, italics, links, and
   bullet lists render in Teams; tables and nested lists don't render reliably.
 - **Answers arrive complete**, not streamed token by token.
-- **In a channel, the bot only sees messages addressed to it** — not the
-  surrounding discussion. Reading full channel history needs additional Teams
-  permissions and Graph calls.
+- **In a channel, the bot only answers messages that `@mention` it** — not the
+  surrounding discussion. Teams withholds the rest, and the bot ignores anything
+  unaddressed that reaches it anyway, so granting `ChannelMessage.Read.Group`
+  later won't turn it into a bot that replies to every line. Note this applies to
+  `/reset` too: in a channel it must be `@Agent Forge /reset`. Reading full
+  channel history needs additional Teams permissions and Graph calls.

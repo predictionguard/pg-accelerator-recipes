@@ -71,6 +71,13 @@ class ForgeTeamsBot(ActivityHandler):
             "messageid=" in (conversation_id or ""),
         )
 
+        # In a channel or group chat the @mention is what addresses the turn to
+        # the bot. Everything else is someone else's conversation — stay out of
+        # it, silently, the way a person would.
+        if conversation.is_group and not self._addressed_to_bot(turn_context.activity):
+            logger.info("ignoring unaddressed group message in %s", conversation_id)
+            return
+
         if not prompt:
             await turn_context.send_activity(
                 MessageFactory.text("Send me some text and I'll pass it to the agent.")
@@ -113,6 +120,29 @@ class ForgeTeamsBot(ActivityHandler):
         await turn_context.send_activity(MessageFactory.text(reply))
 
     # ----------------------------------------------------------------- helpers
+
+    @staticmethod
+    def _addressed_to_bot(activity: Activity) -> bool:
+        """Was the bot itself @mentioned in this message?
+
+        Teams normally withholds unaddressed channel messages from a bot, so
+        this only starts mattering once the app is granted
+        `ChannelMessage.Read.Group` — at which point every line of the
+        surrounding discussion arrives here, and answering all of it would be
+        indistinguishable from a malfunction. Cheap to hold the line now rather
+        than discover it after the permission is granted.
+
+        The id lives in `additional_properties`: `get_mentions` returns raw
+        `Entity` objects despite its `List[Mention]` annotation, so the obvious
+        `mention.mentioned.id` raises `AttributeError`.
+        """
+        recipient = activity.recipient
+        bot_id = recipient.id if recipient else None
+        for mention in TurnContext.get_mentions(activity):
+            mentioned = (mention.additional_properties or {}).get("mentioned") or {}
+            if mentioned.get("id") == bot_id:
+                return True
+        return False
 
     @staticmethod
     def _clean_text(turn_context: TurnContext) -> str:
