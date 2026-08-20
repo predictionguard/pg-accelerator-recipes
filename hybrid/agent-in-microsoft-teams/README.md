@@ -110,15 +110,17 @@ cp .env.example .env
 
 In PowerShell the last line is `Copy-Item .env.example .env`; the rest is identical.
 
-Fill in the two required values in `.env`:
+### What to set in `.env`
+
+Three groups. Only the first is needed to get the agent answering locally.
+
+**1. Your agent — required.** The key comes from Agent Studio under
+**Settings → API Keys**, the agent id from the agent's **API** tab:
 
 ```ini
 AGENT_API_KEY=sk-agentstudio-...   # a scoped key bound to this agent
 AGENT_ID=your-agent-id             # what gets sent as "model"
 ```
-
-Both come from Agent Studio — the key from **Settings → API Keys**, the agent id
-from the agent's **API** tab.
 
 **If you're not on the public gateway, set your host too:**
 
@@ -132,7 +134,52 @@ a version segment; the code appends `/v1` itself. It defaults to the public
 gateway, and is validated at startup so a mistyped value fails immediately rather
 than on the first message someone sends.
 
-Leave everything else alone for now; the deploy script fills in the Azure values.
+**2. Names — required before you deploy (step 4).**
+
+```ini
+APP_NAME=my-agent-teams            # names every Azure resource
+TEAMS_APP_NAME=My Research Agent   # what colleagues see in Teams
+```
+
+These two are easy to conflate, and they follow different rules:
+
+| | `APP_NAME` | `TEAMS_APP_NAME` |
+| --- | --- | --- |
+| Names | Azure resource group, Function App, bot, storage account | The app and bot as shown in Teams |
+| Allowed characters | letters, digits, hyphens; must start and end alphanumeric | anything, up to 30 characters |
+| Spaces | **no** — the Function App name is a public hostname | yes |
+| Uniqueness | globally, because it's a hostname | only within your Teams tenant |
+
+Putting a display name such as `PG DebugMaster AI` into `APP_NAME` is the usual
+mistake. The deploy script rejects it before creating anything and suggests a
+slug, but it's cheaper to get right first time.
+
+`APP_NAME` also decides whether re-running the deploy **updates** your deployment
+or quietly builds a second one alongside it — see step 4.
+
+**3. Behaviour and appearance — optional.** `WELCOME_MESSAGE`, `SYSTEM_PROMPT`,
+`HISTORY_TURNS`, `HISTORY_TTL_SECONDS`, `LOCATION` and the icons all have
+workable defaults. `WELCOME_MESSAGE` and `SYSTEM_PROMPT` are the two most worth
+setting — see [Customising an agent's presence](#customising-an-agents-presence).
+
+**Leave these alone.** `MicrosoftAppId`, `MicrosoftAppPassword` and
+`MicrosoftAppTenantId` are written for you by the deploy script; editing them by
+hand mostly produces a bot that can't authenticate. `TEAMS_APP_ID` is generated on
+the first build and printed for you to paste back — after that keep it stable, or
+Teams treats your next upload as a brand new app rather than an update.
+
+### Syntax that bites
+
+- **No `export`, no shell expansion.** `KEY=value`, one per line. A value set in
+  your shell environment wins over `.env`, which is occasionally useful and
+  occasionally very confusing — the app logs a warning naming anything it ignored
+  for that reason.
+- **Quotes are stripped, not respected.** `APP_NAME="my app"` becomes `my app`,
+  spaces and all, which is still an invalid Azure name. Quotes don't make a value
+  with spaces legal — they just hide it from you.
+- **Inline comments are ignored**, so `AGENT_ID=abc123  # research agent` reads as
+  `abc123`. Both the app and the deploy script agree on this; earlier versions of
+  the script did not, and silently sent the comment to Azure as part of the value.
 
 ## 2. Check the agent is reachable
 
@@ -377,21 +424,47 @@ or that `@mention` it.
 
 # Configuration reference
 
+**Your agent**
+
 | Variable | Required | Default | |
 | --- | :---: | --- | --- |
 | `AGENT_API_KEY` | ✅ | — | Scoped Agent Studio key (`sk-agentstudio-…`) |
 | `AGENT_ID` | ✅ | — | Your agent's id |
 | `AGENT_FORGE_BASE_URL` | | public gateway | Your deployment's host, no `/v1` |
 | `AGENT_FORGE_TIMEOUT` | | `120` | Seconds before giving up |
-| `MicrosoftAppId` / `MicrosoftAppPassword` | for Teams | — | Written by the deploy script. Blank ⇒ local only |
-| `MicrosoftAppType` | | `MultiTenant` | Or `SingleTenant` |
-| `MicrosoftAppTenantId` | if single-tenant | — | |
-| `WELCOME_MESSAGE` | | built-in | Shown on install |
+
+**Naming and placement** — set these before deploying
+
+| Variable | Required | Default | |
+| --- | :---: | --- | --- |
+| `APP_NAME` | ✅ to deploy | `agentforge-teams-demo` | Names every Azure resource. Letters, digits, hyphens only — no spaces. Globally unique. Changing it builds a **separate** deployment |
+| `LOCATION` | | `eastus` | Azure region for every resource |
+| `RESOURCE_GROUP` | | `<APP_NAME>-rg` | Override to put several agents in one group |
+
+**How it appears in Teams**
+
+| Variable | Required | Default | |
+| --- | :---: | --- | --- |
+| `TEAMS_APP_NAME` | | `Agent Forge` | Shown to colleagues. Max 30 characters; spaces fine |
+| `TEAMS_APP_ID` | per agent | generated | Unique GUID per agent; **keep it stable** or the next upload installs a duplicate |
+| `TEAMS_APP_DESCRIPTION` / `DEVELOPER_NAME` / `DEVELOPER_URL` | | derived | Finer control over the manifest |
+
+**Behaviour**
+
+| Variable | Required | Default | |
+| --- | :---: | --- | --- |
+| `WELCOME_MESSAGE` | | built-in | Shown on install. Worth setting — it's the first thing anyone reads |
 | `SYSTEM_PROMPT` | | — | Prepended to every request |
-| `HISTORY_TURNS` | | `8` | Turns replayed |
+| `HISTORY_TURNS` | | `8` | User+assistant pairs replayed |
 | `HISTORY_TTL_SECONDS` | | `3600` | Idle expiry |
-| `TEAMS_APP_NAME` | | `Agent Forge` | Max 30 characters |
-| `TEAMS_APP_ID` | per agent | generated | Unique GUID per agent; keep it stable |
+
+**Written by the deploy script — don't hand-edit**
+
+| Variable | Required | Default | |
+| --- | :---: | --- | --- |
+| `MicrosoftAppId` / `MicrosoftAppPassword` | for Teams | — | Blank ⇒ local only, which is what [local_teams_sim.py](scripts/local_teams_sim.py) expects |
+| `MicrosoftAppType` | | `SingleTenant` | Azure no longer accepts multi-tenant bot creation |
+| `MicrosoftAppTenantId` | if single-tenant | — | Filled from your logged-in tenant |
 
 ---
 

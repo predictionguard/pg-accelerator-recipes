@@ -30,6 +30,18 @@ APP_NAME_FROM_SHELL="${APP_NAME:-}"
 if [[ -f .env ]]; then
   while IFS='=' read -r key value; do
     [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    # Match how python-dotenv reads the same file, so the app and this script
+    # never disagree about a value. Taking the line verbatim means
+    # `AGENT_ID=abc # my agent` exports the comment too, and a quoted
+    # `APP_NAME="my app"` keeps its quotes — both then land in Azure's app
+    # settings, or in a resource name, exactly as written.
+    case "$value" in
+      \"*\"|\'*\') ;;                     # quoted: the interior is literal
+      *) value="${value%%[[:space:]]#*}" ;; # unquoted: drop an inline comment
+    esac
+    value="${value%"${value##*[![:space:]]}"}"   # trim trailing whitespace
+    value="${value#\"}"; value="${value%\"}"     # strip surrounding quotes
+    value="${value#\'}"; value="${value%\'}"
     [[ -n "${!key:-}" ]] || export "$key=$value"
   done < <(grep -v '^[[:space:]]*#' .env | grep '=')
 fi
@@ -66,6 +78,27 @@ command -v func >/dev/null || fail "Azure Functions Core Tools (func) not found.
 az account show >/dev/null 2>&1 || fail "Not logged in. Run: az login"
 [[ -n "${AGENT_API_KEY:-}" ]] || fail "AGENT_API_KEY is not set (put it in .env)."
 [[ -n "${AGENT_ID:-}" ]] || fail "AGENT_ID is not set (put it in .env)."
+
+# APP_NAME becomes a resource group, a bot, and a function app whose name is a
+# public hostname — so letters, digits and hyphens only. Azure rejects the rest,
+# but not until it tries to create something, by which point the resource group
+# already exists. Checking here also catches the likelier mistake: putting the
+# agent's display name in APP_NAME, which belongs in TEAMS_APP_NAME instead.
+if [[ ! "$APP_NAME" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,58}[a-zA-Z0-9])?$ ]]; then
+  SUGGESTED="$(printf '%s' "$APP_NAME" \
+    | tr '[:upper:]' '[:lower:]' \
+    | tr -cs 'a-z0-9' '-' \
+    | sed -e 's/^-*//' -e 's/-*$//')"
+  fail "APP_NAME is not usable as an Azure resource name:
+    [$APP_NAME]
+  It may contain only letters, digits and hyphens, and must start and end with
+  one — no spaces, quotes or underscores.
+
+  If that was meant as the name people see in Teams, set TEAMS_APP_NAME to it
+  and give APP_NAME a slug:
+    APP_NAME=$SUGGESTED
+    TEAMS_APP_NAME=$APP_NAME"
+fi
 
 # Shown before anything is created, because every name below is derived from
 # APP_NAME and a wrong one fails silently — by building a second deployment.
